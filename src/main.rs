@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use anyhow::{Context, Result};
-
+use chrono::{DateTime, Utc};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     }
 
     fs::create_dir_all(&args.dst)
-        .with_context(|| format!("Failed to Create Destionation"));
+        .with_context(|| format!("Failed to Create Destionation"))?;
 
     for entry in WalkDir::new(&args.src).into_iter().filter_map(|e| e.ok()){
         let path = entry.path(); 
@@ -38,13 +38,25 @@ fn main() -> Result<()> {
             continue;
         }
 
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("unknow")
-            .to_lowercase();
+        let folder_name = match args.mode.as_str() {
+            "by type" => {
+                path.extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("unknow")
+                .to_lowercase()
+             }
+            "by-date" => {
+                let meta = fs::metadata(path)
+                    .with_context(|| format!("Failed to read metatdata for {:?}", path))?;
+                let modified = meta.modified()
+                    .with_context(|| format!("Failed to get modified time for {:?}", path))?;
+                let datetime: DateTime<Utc> = modified.into();
+                datetime.format("%Y-%m").to_string()
+            }
+            _ => anyhow::bail!("Unknow mode {:?}", args.mode),
+        };
 
-        let target_dir = args.dst.join(&ext);
+        let target_dir = args.dst.join(&folder_name);
         let file_name = path.file_name().unwrap();
         let target_path = target_dir.join(file_name);
 
